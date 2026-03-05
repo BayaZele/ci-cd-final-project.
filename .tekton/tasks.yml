@@ -4,7 +4,7 @@ kind: Task
 metadata:
   name: remove
 spec:
-  description: This task will clean up a workspace by deleting all the files.
+  description: This task will clean up a workspace by deleting all files.
   workspaces:
     - name: source
   steps:
@@ -21,23 +21,18 @@ spec:
         #!/usr/bin/env sh
         set -eu
         echo "Removing all files from ${WORKSPACE_SOURCE_PATH} ..."
-
-        # Delete any existing contents of the directory if it exists.
-        # We don't just "rm -rf ${WORKSPACE_SOURCE_PATH}" because it might be "/"
         if [ -d "${WORKSPACE_SOURCE_PATH}" ] ; then
-          # Delete non-hidden files and directories
           rm -rf "${WORKSPACE_SOURCE_PATH:?}"/*
-          # Delete files and directories starting with . but excluding ..
           rm -rf "${WORKSPACE_SOURCE_PATH}"/.[!.]*
-          # Delete files and directories starting with .. plus any other character
           rm -rf "${WORKSPACE_SOURCE_PATH}"/..?*
+        fi
 ---
 apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: eslint
 spec:
-  description: This task will lint the source code using ESLint.
+  description: Lint the source code using ESLint.
   workspaces:
     - name: source
   params:
@@ -62,6 +57,7 @@ kind: Task
 metadata:
   name: jest-test
 spec:
+  description: Run unit tests using Jest.
   workspaces:
     - name: source
   params:
@@ -80,3 +76,28 @@ spec:
         npm ci
         echo "Running Jest tests..."
         npm test $(params.args)
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: deploy
+spec:
+  description: Deploy application to OpenShift
+  workspaces:
+    - name: source
+  params:
+    - name: app-name
+      type: string
+      description: Name of the application
+    - name: build-image
+      type: string
+      description: Image built by buildah
+  steps:
+    - name: deploy
+      image: registry.access.redhat.com/ubi8/ubi-minimal
+      workingDir: $(workspaces.source.path)
+      script: |
+        #!/bin/sh
+        set -e
+        echo "Deploying application $(params.app-name) using image $(params.build-image)"
+        oc create deployment $(params.app-name) --image=$(params.build-image) --dry-run=client -o yaml | oc apply -f -
